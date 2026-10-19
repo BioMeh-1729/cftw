@@ -22,7 +22,6 @@ typedef struct RGBA {
     unsigned char r;
     unsigned char g;
     unsigned char b;
-    unsigned char a; // Delete if it is not supported cuz i forgot
 } RGBA;
 
 typedef struct BmpImage {
@@ -33,6 +32,63 @@ typedef struct BmpImage {
     unsigned int uiHeight; // Height in pixels
 } BmpImage;
 
+
+//
+// Results
+//
+
+/**
+* Abstract results
+
+    typedef struct ResultT* {
+        unsigned char opFlag; // Operating result flag
+        char* ptr; // Additional info ptr. If nullptr - no additional info. If not nullptr - then it is a \0 terminated string.
+    } ResultBmpImage;
+
+*/
+
+/**
+* Result, involving returning a nothing.
+*/
+typedef struct ResultVoid {
+    unsigned char opFlag; 
+    char* ptr;
+} ResultVoid;
+
+/**
+* Result, involving returning a BmpImage.
+*/
+typedef struct ResultBmpImage {
+    unsigned char opFlag; 
+    char* ptr; 
+    BmpImage* resultPtr; // Null on error
+} ResultBmpImage;
+
+/**
+* Result, involving returning a unsigned long/usize TODO: Check and correct me for specific casess.
+*/
+typedef struct ResultUsize {
+    unsigned char opFlag; 
+    char* ptr; 
+    unsigned long result; // If opFlag indicates failure - reading and using result is Undefined Behaviour
+} ResultUsize;
+
+/**
+* Result, involving returning a RGBA.
+*/
+typedef struct ResultRGBA {
+    unsigned char opFlag; 
+    char* ptr; 
+    RGBA result; // If opFlag indicates failure - reading and using result is Undefined Behaviour
+} ResultRGBA;
+
+
+
+#define FLAG_OBMP_OK 0 // Everything is fine - resultPtr is guaranteed to be non nullptr.
+#define FLAG_OBMP_WMN 1 // Wrong magic numbers - resultPtr is guaranteed to be nullptr.
+#define FLAG_OBMP_UNSUPPORTED 2 // Unsupported - resultPtr is guaranteed to be nullptr. Additional info contains details about what exactly is unsupported.
+#define FLAG_OBMP_IO 3 // IO error - resultPtr is guaranteed to be nullptr. Additional info contains details about what exactly happend.
+
 /**
 *
 * Reads file from fs and constructs BmpImage instance in heap.
@@ -40,13 +96,13 @@ typedef struct BmpImage {
 * # Arguments
 *   path - '\0' terminated absolute or relative path.
 * # Returns 
-*   pointer to instance of BmpImage
+*   ResultBmpImage - op flags defined with FLAG_OBMP_*
 *
 *
 * # Note
 *   Path is not not guaranteed library side check required.
 */
-extern BmpImage* open_bmp(const char* path);
+extern ResultBmpImage open_bmp(const char* path);
 
 /**
 *
@@ -62,7 +118,7 @@ extern BmpImage* open_bmp(const char* path);
 *   Path is not not guaranteed library side check required.
 *   img is guaranteed to be a correct BmpImage instance.
 */
-extern void write_bmp(const char* path, BmpImage* img);
+extern ResultVoid write_bmp(const char* path, BmpImage* img);
 
 /**
 *
@@ -79,7 +135,7 @@ extern void write_bmp(const char* path, BmpImage* img);
 *   img is guaranteed to be valid BmpImages and non nullptr.
 *   x and y not guaranteed to be valid, library side check required
 */
-extern unsigned long index(BmpImage* img, unsigned int x, unsigned int y);
+extern ResultUsize index(BmpImage* img, unsigned int x, unsigned int y);
 
 /**
 *
@@ -95,7 +151,7 @@ extern unsigned long index(BmpImage* img, unsigned int x, unsigned int y);
 *   img is guaranteed to be valid BmpImages and non nullptr.
 *   Implementation of this function must relay on `unsigned long index(BmpImage* img, unsigned int x, unsigned int y)`
 */
-extern RGBA read_pixel(BmpImage* img, unsigned int x, unsigned int y);
+extern ResultRGBA read_pixel(BmpImage* img, unsigned int x, unsigned int y);
 
 /**
 *
@@ -111,7 +167,7 @@ extern RGBA read_pixel(BmpImage* img, unsigned int x, unsigned int y);
 *   img is guaranteed to be valid BmpImages and non nullptr.
 *   Implementation of this function must relay on `unsigned long index(BmpImage* img, unsigned int x, unsigned int y)`
 */
-extern void set_pixel(BmpImage* img, unsigned int x, unsigned int y, RGBA color);
+extern ResultVoid set_pixel(BmpImage* img, unsigned int x, unsigned int y, RGBA color);
 
 /**
 *
@@ -129,7 +185,7 @@ extern void set_pixel(BmpImage* img, unsigned int x, unsigned int y, RGBA color)
 *   img1 and img2 are guaranteed to be valid BmpImages and non nullptr.
 *   img1 and img2 must not be changed by the merge function behaviour.
 */
-extern BmpImage* merge(BmpImage* img1, BmpImage* img2, float blend);
+extern ResultBmpImage merge(BmpImage* img1, BmpImage* img2, float blend);
 
 /**
 *
@@ -150,7 +206,7 @@ extern BmpImage* merge(BmpImage* img1, BmpImage* img2, float blend);
 *   img is guaranteed to be valid BmpImages and non nullptr.
 *   img must not be changed by the merge function behaviour.
 */
-extern BmpImage* margin(BmpImage* img, Margin marg, RGBA fill);
+extern ResultBmpImage margin(BmpImage* img, Margin marg, RGBA fill);
 
 /**
 *
@@ -169,7 +225,7 @@ extern BmpImage* margin(BmpImage* img, Margin marg, RGBA fill);
 *   img is guaranteed to be valid BmpImages and non nullptr.
 *   img must not be changed by the merge function behaviour.
 */
-extern BmpImage* shrink(BmpImage* img, int newWidth, int newHeight);
+extern ResultBmpImage shrink(BmpImage* img, int newWidth, int newHeight);
 
 #ifdef __cplusplus
 }
