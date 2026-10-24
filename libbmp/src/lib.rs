@@ -1,37 +1,5 @@
-#[allow(unused)]
 mod byteorder;
-#[allow(unused)]
 mod bmp {
-
-	//! A small library for reading and writing BMP images.
-	//!
-	//! The library supports uncompressed BMP Version 3 images.
-	//! The different decoding and encoding schemes is shown in the table below.
-	//!
-	//! |Scheme | Decoding | Encoding | Compression |
-	//! |-------|----------|----------|-------------|
-	//! | 24 bpp| ✓        | ✓        | No          |
-	//! | 8 bpp | ✓        | ✗        | No          |
-	//! | 4 bpp | ✓        | ✗        | No          |
-	//! | 1 bpp | ✓        | ✗        | No          |
-	//!
-	//! # Example
-	//!
-	//! ```
-	//! #[macro_use]
-	//! extern crate bmp;
-	//! use bmp::{Image, Pixel};
-	//!
-	//! fn main() {
-	//!     let mut img = Image::new(256, 256);
-	//!
-	//!     for (x, y) in img.coordinates() {
-	//!         img.set_pixel(x, y, px!(x, y, 200));
-	//!     }
-	//!     let _ = img.save("img.bmp");
-	//! }
-	//! ```
-	//!
 
 	use std::convert::AsRef;
 	use std::fmt;
@@ -41,10 +9,8 @@ mod bmp {
 	use std::iter::Iterator;
 	use std::path::Path;
 
-	// Expose decoder's public types, structs, and enums
 	pub use decoder::{BmpError, BmpErrorKind, BmpResult};
 
-	/// Macro to generate a `Pixel` from `r`, `g` and `b` values.
 	#[macro_export]
 	macro_rules! px {
 		($r:expr, $g:expr, $b:expr) => {
@@ -59,7 +25,6 @@ mod bmp {
 	macro_rules! file_size {
 		($bpp:expr, $width:expr, $height:expr) => {{
 			let header_size = 2 + 12 + 40;
-			// find row size in bytes, round up to 4 bytes (padding)
 			let row_size = (($bpp as f32 * $width as f32 + 31.0) / 32.0).floor() as u32 * 4;
 			(header_size as u32, $height as u32 * row_size)
 		}};
@@ -75,17 +40,13 @@ mod bmp {
 		use std::fmt;
 		use std::io::{self, Cursor, Read, Seek, SeekFrom};
 
-		// The BmpHeader always has a size of 14 bytes
 		const BMP_HEADER_SIZE: u64 = 14;
 
-		// Import structs/functions defined in lib.rs
 		use self::BmpErrorKind::*;
 		use super::*;
 
-		/// A result type, either containing an `Image` or a `BmpError`.
 		pub type BmpResult<T> = Result<T, BmpError>;
 
-		/// The error type returned if the decoding of an image from disk fails.
 		#[derive(Debug)]
 		pub struct BmpError {
 			pub kind: BmpErrorKind,
@@ -127,7 +88,6 @@ mod bmp {
 
 		impl Error for BmpError {}
 
-		/// The different kinds of possible BMP errors.
 		#[derive(Debug)]
 		pub enum BmpErrorKind {
 			WrongMagicNumbers,
@@ -157,8 +117,12 @@ mod bmp {
 
 			let color_palette = read_color_palette(bmp_data, &dib_header)?;
 
-			let width = dib_header.width.abs() as u32;
-			let height = dib_header.height.abs() as u32;
+			let width = dib_header
+				.width
+				.abs() as u32;
+			let height = dib_header
+				.height
+				.abs() as u32;
 			let padding = width % 4;
 
 			let data = match color_palette {
@@ -227,12 +191,7 @@ mod bmp {
 			};
 
 			match BmpVersion::from_dib_header(&dib_header) {
-				// V3 is the only version that is "fully" supported (decompressed images are the exception)
-				// We will also attempt to decode v4 and v5, but we ignore all the additional data in the header.
-				// This should not impose a big problem because neither decompression, nor 16 and 32-bit images are supported,
-				// so the decoding will likely fail due to these constraints either way.
 				Some(BmpVersion::Three) | Some(BmpVersion::Four) | Some(BmpVersion::Five) => (),
-				// Otherwise, report the errors
 				Some(other) => return Err(BmpError::new(UnsupportedBmpVersion, other)),
 				None => {
 					return Err(BmpError::new(
@@ -247,7 +206,6 @@ mod bmp {
 			}
 
 			match dib_header.bits_per_pixel {
-				// Currently supported
 				1 | 4 | 8 | 24 => (),
 				other => {
 					return Err(BmpError::new(
@@ -273,17 +231,13 @@ mod bmp {
 			dh: &BmpDibHeader,
 		) -> BmpResult<Option<Vec<Pixel>>> {
 			let num_entries = match dh.bits_per_pixel {
-				// We have a color_palette if the num_colors in the dib header is not zero
 				_ if dh.num_colors != 0 => dh.num_colors as usize,
-				// Or if there are 8 or less bits per pixel
 				bpp @ 1 | bpp @ 4 | bpp @ 8 => 1 << bpp,
 				_ => return Ok(None),
 			};
 
 			let num_bytes = match BmpVersion::from_dib_header(&dh) {
-				// Three bytes for v2. Though, this is currently not supported
 				Some(BmpVersion::Two) => return Err(BmpError::new(UnsupportedBmpVersion, BmpVersion::Two)),
-				// Each entry in the color_palette is four bytes for v3, v4, and v5
 				_ => 4,
 			};
 
@@ -308,7 +262,6 @@ mod bmp {
 			offset: usize,
 		) -> BmpResult<Vec<Pixel>> {
 			let mut data = Vec::with_capacity(height * width);
-			// Number of bytes to read from each row, varies based on bits_per_pixel
 			let bytes_per_row = (width as f64 / (8.0 / bpp as f64)).ceil() as usize;
 			for y in 0..height {
 				let padding = match bytes_per_row % 4 {
@@ -333,16 +286,13 @@ mod bmp {
 			padding: i64,
 		) -> BmpResult<Vec<Pixel>> {
 			let mut data = Vec::with_capacity((height * width) as usize);
-			// seek until data
 			bmp_data.seek(SeekFrom::Start(offset as u64))?;
-			// read pixels until padding
 			let mut px = [0; 3];
 			for _ in 0..height {
 				for _ in 0..width {
 					bmp_data.read(&mut px)?;
 					data.push(px!(px[2], px[1], px[0]));
 				}
-				// seek padding
 				bmp_data.seek(SeekFrom::Current(padding))?;
 			}
 			Ok(data)
@@ -396,42 +346,6 @@ mod bmp {
 				}
 			}
 		}
-
-		#[test]
-		fn test_calculate_bit_index() {
-			let bytes = vec![0b1000_0001, 0b1111_0001];
-
-			let mut bi = bit_index(&bytes, 1, 15);
-			assert_eq!(bi.next(), Some(1));
-			assert_eq!(bi.next(), Some(0));
-			assert_eq!(bi.next(), Some(0));
-			assert_eq!(bi.next(), Some(0));
-			assert_eq!(bi.next(), Some(0));
-			assert_eq!(bi.next(), Some(0));
-			assert_eq!(bi.next(), Some(0));
-			assert_eq!(bi.next(), Some(1));
-			assert_eq!(bi.next(), Some(1));
-			assert_eq!(bi.next(), Some(1));
-			assert_eq!(bi.next(), Some(1));
-			assert_eq!(bi.next(), Some(1));
-			assert_eq!(bi.next(), Some(0));
-			assert_eq!(bi.next(), Some(0));
-			assert_eq!(bi.next(), Some(0));
-			assert_eq!(bi.next(), None);
-			assert_eq!(bi.next(), None);
-
-			let mut bi = bit_index(&bytes, 4, 4);
-			assert_eq!(bi.next(), Some(0b1000));
-			assert_eq!(bi.next(), Some(0b0001));
-			assert_eq!(bi.next(), Some(0b1111));
-			assert_eq!(bi.next(), Some(0b0001));
-			assert_eq!(bi.next(), None);
-
-			let mut bi = bit_index(&bytes, 8, 2);
-			assert_eq!(bi.next(), Some(0b1000_0001));
-			assert_eq!(bi.next(), Some(0b1111_0001));
-			assert_eq!(bi.next(), None);
-		}
 	}
 	mod encoder {
 		use super::super::byteorder::{LittleEndian, WriteBytesExt};
@@ -444,7 +358,11 @@ mod bmp {
 		const M: u8 = 77;
 
 		pub fn encode_image(bmp_image: &Image) -> io::Result<Vec<u8>> {
-			let mut bmp_data = Vec::with_capacity(bmp_image.header.file_size as usize);
+			let mut bmp_data = Vec::with_capacity(
+				bmp_image
+					.header
+					.file_size as usize,
+			);
 
 			write_header(&mut bmp_data, bmp_image)?;
 			write_data(&mut bmp_data, bmp_image)?;
@@ -464,19 +382,18 @@ mod bmp {
 			bmp_data.write_u32::<LittleEndian>(header_size + data_size)?;
 			bmp_data.write_u16::<LittleEndian>(header.creator1)?;
 			bmp_data.write_u16::<LittleEndian>(header.creator2)?;
-			bmp_data.write_u32::<LittleEndian>(header_size)?; // pixel_offset
-
+			bmp_data.write_u32::<LittleEndian>(header_size)?;
 			bmp_data.write_u32::<LittleEndian>(dib_header.header_size)?;
 			bmp_data.write_i32::<LittleEndian>(dib_header.width)?;
 			bmp_data.write_i32::<LittleEndian>(dib_header.height)?;
-			bmp_data.write_u16::<LittleEndian>(1)?; // num_planes
-			bmp_data.write_u16::<LittleEndian>(24)?; // bits_per_pixel
-			bmp_data.write_u32::<LittleEndian>(0)?; // compress_type
+			bmp_data.write_u16::<LittleEndian>(1)?;
+			bmp_data.write_u16::<LittleEndian>(24)?;
+			bmp_data.write_u32::<LittleEndian>(0)?;
 			bmp_data.write_u32::<LittleEndian>(data_size)?;
 			bmp_data.write_i32::<LittleEndian>(dib_header.hres)?;
 			bmp_data.write_i32::<LittleEndian>(dib_header.vres)?;
-			bmp_data.write_u32::<LittleEndian>(0)?; // num_colors
-			bmp_data.write_u32::<LittleEndian>(0)?; // num_imp_colors
+			bmp_data.write_u32::<LittleEndian>(0)?;
+			bmp_data.write_u32::<LittleEndian>(0)?;
 			Ok(())
 		}
 
@@ -497,11 +414,8 @@ mod bmp {
 		}
 	}
 
-	/// The pixel data used in the `Image`.
-	///
-	/// It has three values for the `red`, `blue` and `green` color channels, respectively.
-	#[repr(C)]
 	#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+	#[repr(C)]
 	pub struct Pixel {
 		pub r: u8,
 		pub g: u8,
@@ -509,7 +423,6 @@ mod bmp {
 	}
 
 	impl Pixel {
-		/// Creates a new `Pixel`.
 		pub fn new(
 			r: u8,
 			g: u8,
@@ -519,7 +432,6 @@ mod bmp {
 		}
 	}
 
-	/// Displays the rgb values as an rgb color triple
 	impl fmt::Display for Pixel {
 		fn fmt(
 			&self,
@@ -529,7 +441,6 @@ mod bmp {
 		}
 	}
 
-	/// Displays the rgb values as an upper-case 24-bit hexadecimal number
 	impl fmt::UpperHex for Pixel {
 		fn fmt(
 			&self,
@@ -539,7 +450,6 @@ mod bmp {
 		}
 	}
 
-	/// Displays the rgb values as a lower-case 24-bit hexadecimal number
 	impl fmt::LowerHex for Pixel {
 		fn fmt(
 			&self,
@@ -588,7 +498,6 @@ mod bmp {
 		Uncompressed,
 		Rle8bit,
 		Rle4bit,
-		// Only for BMP version 4
 		BitfieldsEncoding,
 	}
 
@@ -615,7 +524,7 @@ mod bmp {
 	}
 
 	#[derive(Clone, Debug, Eq, PartialEq)]
-	struct BmpHeader {
+	pub struct BmpHeader {
 		file_size: u32,
 		creator1: u16,
 		creator2: u16,
@@ -629,15 +538,15 @@ mod bmp {
 		) -> BmpHeader {
 			BmpHeader {
 				file_size: header_size + data_size,
-				creator1: 0, /* Unused */
-				creator2: 0, /* Unused */
+				creator1: 0,
+				creator2: 0,
 				pixel_offset: header_size,
 			}
 		}
 	}
 
 	#[derive(Clone, Debug, Eq, PartialEq)]
-	struct BmpDibHeader {
+	pub struct BmpDibHeader {
 		header_size: u32,
 		width: i32,
 		height: i32,
@@ -673,35 +582,18 @@ mod bmp {
 		}
 	}
 
-	/// The image type provided by the library.
-	///
-	/// It exposes functions to initialize or read BMP images from disk, common modification of pixel
-	/// data, and saving to disk.
-	///
-	/// The image is accessed in row-major order from top to bottom,
-	/// where point (0, 0) is defined to be in the upper left corner of the image.
-	///
-	/// Currently, only uncompressed BMP images are supported.
 	#[derive(Clone, Eq, PartialEq)]
 	pub struct Image {
-		header: BmpHeader,
-		dib_header: BmpDibHeader,
-		color_palette: Option<Vec<Pixel>>,
-		width: u32,
-		height: u32,
-		padding: u32,
+		pub header: BmpHeader,
+		pub dib_header: BmpDibHeader,
+		pub color_palette: Option<Vec<Pixel>>,
+		pub width: u32,
+		pub height: u32,
+		pub padding: u32,
 		pub data: Vec<Pixel>,
 	}
 
 	impl Image {
-		/// Returns a new BMP Image with the `width` and `height` specified. It is initialized to
-		/// a black image by default.
-		///
-		/// # Example
-		///
-		/// ```
-		/// let mut img = bmp::Image::new(100, 80);
-		/// ```
 		pub fn new(
 			width: u32,
 			height: u32,
@@ -723,83 +615,46 @@ mod bmp {
 			}
 		}
 
-		/// Returns the `width` of the Image.
 		#[inline]
 		pub fn get_width(&self) -> u32 {
 			self.width
 		}
 
-		/// Returns the `height` of the Image.
 		#[inline]
 		pub fn get_height(&self) -> u32 {
 			self.height
 		}
 
-		/// Set the pixel value at the position of `width` and `height`.
-		///
-		/// # Example
-		///
-		/// ```
-		/// let mut img = bmp::Image::new(100, 80);
-		/// img.set_pixel(10, 10, bmp::consts::RED);
-		/// ```
 		#[inline]
 		pub fn set_pixel(
 			&mut self,
 			x: u32,
 			y: u32,
 			val: Pixel,
-		) {
-			self.data[((self.height - y - 1) * self.width + x) as usize] = val;
+		) -> bool {
+			self
+				.data
+				.get_mut(((self.height - y - 1) * self.width + x) as usize)
+				.map(|a| *a = val)
+				.is_some()
 		}
 
-		/// Returns the pixel value at the position of `width` and `height`.
-		///
-		/// # Example
-		///
-		/// ```
-		/// let img = bmp::Image::new(100, 80);
-		/// assert_eq!(bmp::consts::BLACK, img.get_pixel(10, 10));
-		/// ```
 		#[inline]
 		pub fn get_pixel(
 			&self,
 			x: u32,
 			y: u32,
-		) -> Pixel {
-			self.data[((self.height - y - 1) * self.width + x) as usize]
+		) -> Option<&Pixel> {
+			self
+				.data
+				.get(((self.height - y - 1) * self.width + x) as usize)
 		}
 
-		/// Returns a new `ImageIndex` that iterates over the image dimensions in top-bottom order.
-		///
-		/// # Example
-		///
-		/// ```
-		/// let mut img = bmp::Image::new(100, 100);
-		/// for (x, y) in img.coordinates() {
-		///     img.set_pixel(x, y, bmp::consts::BLUE);
-		/// }
-		/// ```
 		#[inline]
 		pub fn coordinates(&self) -> ImageIndex {
 			ImageIndex::new(self.width as u32, self.height as u32)
 		}
 
-		/// Saves the `Image` instance to the path specified by `path`.
-		/// The function will overwrite the contents if a file already exists at the given path.
-		///
-		/// The function returns the `io::Result` from the underlying writer.
-		///
-		/// # Example
-		///
-		/// ```
-		/// use bmp::Image;
-		///
-		/// let mut img = Image::new(100, 100);
-		/// let _ = img.save("black.bmp").unwrap_or_else(|e| {
-		///     panic!("Failed to save: {}", e)
-		/// });
-		/// ```
 		pub fn save<P: AsRef<Path>>(
 			&self,
 			path: P,
@@ -808,7 +663,6 @@ mod bmp {
 			self.to_writer(&mut bmp_file)
 		}
 
-		/// Writes the `Image` instance to the writer referenced by `destination`.
 		pub fn to_writer<W: Write>(
 			&self,
 			destination: &mut W,
@@ -835,10 +689,6 @@ mod bmp {
 		}
 	}
 
-	/// An `Iterator` returning the `x` and `y` coordinates of an image.
-	///
-	/// It supports iteration over an image in row-major order,
-	/// starting from in the upper left corner of the image.
 	#[derive(Clone, Copy)]
 	pub struct ImageIndex {
 		width: u32,
@@ -879,24 +729,11 @@ mod bmp {
 		}
 	}
 
-	/// Utility function to load an `Image` from the file specified by `path`.
-	/// It uses the `from_reader` function internally to decode the `Image`.
-	/// Returns a `BmpResult`, either containing an `Image` or a `BmpError`.
-	///
-	/// # Example
-	///
-	/// ```
-	/// let img = bmp::open("test/rgbw.bmp").unwrap_or_else(|e| {
-	///    panic!("Failed to open: {}", e);
-	/// });
-	/// ```
 	pub fn open<P: AsRef<Path>>(path: P) -> BmpResult<Image> {
 		let mut f = fs::File::open(path)?;
 		from_reader(&mut f)
 	}
 
-	/// Attempts to construct a new `Image` from the given reader.
-	/// Returns a `BmpResult`, either containing an `Image` or a `BmpError`.
 	pub fn from_reader<R: Read>(source: &mut R) -> BmpResult<Image> {
 		let mut bytes = Vec::new();
 		source.read_to_end(&mut bytes)?;
@@ -907,32 +744,70 @@ mod bmp {
 }
 
 use std::{
-	ffi::{CStr, OsStr, c_char},
+	ffi::{CStr, CString, OsStr, c_char},
 	os::unix::ffi::OsStrExt,
 };
 
-use crate::bmp::Pixel;
+pub use crate::bmp::Pixel;
 
 #[repr(C)]
 pub struct BmpImage {
-	ptrRawData: *mut crate::bmp::Pixel,
-	ulRawDataSize: u32,
-	uiWidth: u32,
-	uiHeight: u32,
+	ptr: *mut crate::bmp::Pixel,
+	size: u32,
+	width: u32,
+	height: u32,
 	header: [u8; 12],
 	dib_header: [u8; 40],
 }
-fn transform(_inp: crate::bmp::Image) -> BmpImage {
-	todo!("BmpImage is placeholder type!")
+#[repr(C)]
+pub struct Margin {
+	left: i32,
+	top: i32,
+	right: i32,
+	bottom: i32,
 }
-fn transform_back(_inp: *mut BmpImage) -> crate::bmp::Image {
-	todo!()
+
+fn transform(inp: crate::bmp::Image) -> BmpImage {
+	let width = inp.get_width();
+	let height = inp.get_height();
+	let (ptr, size, _) = Vec::into_raw_parts(inp.data);
+	unsafe {
+		BmpImage {
+			ptr,
+			size: size as u32,
+			width,
+			height,
+			header: std::mem::transmute(inp.header),
+			dib_header: std::mem::transmute(inp.dib_header),
+		}
+	}
 }
+fn transform_back(inp: *mut BmpImage) -> crate::bmp::Image {
+	unsafe {
+		crate::bmp::Image {
+			header: std::mem::transmute((*inp).header),
+			dib_header: std::mem::transmute((*inp).dib_header),
+			color_palette: None,
+			width: (*inp).width,
+			height: (*inp).height,
+			padding: (*inp).width % 4,
+			data: Vec::from_raw_parts((*inp).ptr, (*inp).size as usize, (*inp).size as usize),
+		}
+	}
+}
+
 #[repr(C)]
 pub struct ResultBmpImage {
-	ptr: *mut BmpImage,
+	tag: u8,
+	ptr: *const c_char,
+	img: *mut BmpImage,
+}
+#[repr(C)]
+pub struct ResultPixel {
+	data: Pixel,
 	tag: u8,
 }
+
 #[unsafe(no_mangle)]
 pub extern "C" fn open_bmp(s: *const c_char) -> ResultBmpImage {
 	use crate::bmp::BmpErrorKind::*;
@@ -942,58 +817,103 @@ pub extern "C" fn open_bmp(s: *const c_char) -> ResultBmpImage {
 		Ok(a) => {
 			let mut b = transform(a);
 			ResultBmpImage {
-				ptr: &raw mut b,
+				img: &raw mut b,
+				ptr: std::ptr::null(),
 				tag: 0,
 			}
 		}
-		Err(bmp::BmpError { kind, details: _ }) => ResultBmpImage {
-			ptr: std::ptr::null_mut(),
-			tag: match kind {
+		Err(bmp::BmpError { kind, details: s }) => {
+			let tag = match kind {
 				WrongMagicNumbers => 1,
-				UnsupportedBitsPerPixel => 2,
-				UnsupportedCompressionType => 2,
-				UnsupportedBmpVersion => 2,
-				UnsupportedHeader => 2,
 				BmpIoError(_) => 3,
-			},
-		},
+				_ => 2,
+			};
+			let c_str = CString::new(s).expect("details does not contain null bytes!");
+			ResultBmpImage {
+				tag,
+				ptr: c_str.as_ptr(),
+				img: std::ptr::null_mut(),
+			}
+		}
 	}
 }
+#[unsafe(no_mangle)]
 pub extern "C" fn write_bmp(
 	s: *const c_char,
 	img: *mut BmpImage,
-) {
-	transform_back(img)
-		.save(std::path::Path::new(OsStr::from_bytes(
-			unsafe { CStr::from_ptr(s) }.to_bytes(),
-		)))
-		.unwrap()
+) -> *const c_char {
+	match transform_back(img).save(std::path::Path::new(OsStr::from_bytes(
+		unsafe { CStr::from_ptr(s) }.to_bytes(),
+	))) {
+		Err(b) => {
+			let c_str = CString::new(b.to_string()).expect("error message does not contain null bytes!");
+			c_str.as_ptr() //MAYBE NULL, need t ocheck dealocation rules from CString
+		}
+		_ => std::ptr::null(),
+	}
 }
+#[unsafe(no_mangle)]
 pub extern "C" fn index(
 	img: *mut BmpImage,
 	x: u32,
 	y: u32,
 ) -> u32 {
-	let a = transform_back(img);
-	x + y * a.get_height()
+	let a = &transform_back(img);
+	if x < a.get_width() && y < a.get_height() {
+		x + y * a.get_width()
+	} else {
+		u32::MAX
+	}
 }
+#[unsafe(no_mangle)]
 pub extern "C" fn read_pixel(
 	img: *mut BmpImage,
 	x: u32,
 	y: u32,
-) -> ResultRGBA {
-	transform_back(img).get_pixel(x, y);
-	todo!()
+) -> ResultPixel {
+	transform_back(img)
+		.get_pixel(x, y)
+		.map_or_else(
+			|| ResultPixel {
+				data: Pixel::new(0, 0, 0),
+				tag: 1,
+			},
+			|a| ResultPixel { data: *a, tag: 0 },
+		)
 }
+#[unsafe(no_mangle)]
 pub extern "C" fn set_pixel(
 	img: *mut BmpImage,
 	x: u32,
 	y: u32,
 	color: Pixel,
-) {
-	transform_back(img).set_pixel(x, y, color);
+) -> bool {
+	transform_back(img).set_pixel(x, y, color)
 }
-
+#[unsafe(no_mangle)]
+pub extern "C" fn merge(
+	img1: *const BmpImage,
+	img2: *const BmpImage,
+	blend: f32,
+) -> ResultBmpImage {
+	todo!()
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn margin(
+	img: *const BmpImage,
+	marg: Margin,
+	fill: Pixel,
+) -> ResultBmpImage {
+	todo!()
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn shrink(
+	img: *const BmpImage,
+	newWidth: u32,
+	newHeight: u32,
+) -> ResultBmpImage {
+	todo!()
+}
 #[cfg(test)]
 mod tests {
 	#[test]
